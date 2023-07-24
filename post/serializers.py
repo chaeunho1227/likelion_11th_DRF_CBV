@@ -2,25 +2,61 @@ from rest_framework import serializers
 from .models import *
 
 class PostSerializer(serializers.ModelSerializer):
-    id = serializers.CharField(read_only=True)
-    created_at = serializers.CharField(read_only=True)
-    updated_at = serializers.CharField(read_only=True)
-
+    image = serializers.ImageField(use_url=True,required=False)
+    tag = serializers.SerializerMethodField()
     comments = serializers.SerializerMethodField(read_only=True)
+
     def get_comments(self, instance):
         serializers = CommentSerializer(instance.comments, many=True)
         return serializers.data
-    
-    tag = serializers.SerializerMethodField()
+
     def get_tag(self, instance):
         tags = instance.tag.all()
         return [tag.name for tag in tags]
     
-
-    image = serializers.ImageField(use_url=True,required=False)
     class Meta:
         model = Post
         fields = '__all__'
+        read_only_fields = [
+            'id',
+            'created_at',
+            'updated_at',
+            'comments',
+            'likes'
+        ]
+
+class PostListSerializer(serializers.ModelSerializer):
+    comments_cnt =serializers.SerializerMethodField()
+    tag = serializers.SerializerMethodField()
+
+    def get_comments_cnt(self, instance):
+        return instance.comments.count()
+
+    def get_tag(self, instance):
+        tags = instance.tag.all()
+        return [tag.name for tag in tags]
+    
+    class Meta:
+        model = Post
+        fields = [
+            'id',
+            'title',
+            'writer',
+            'content',
+            'created_at',
+            'updated_at',
+            'tag',
+            'image',
+            'comments_cnt',
+            'likes',
+        ]
+        read_only_fields = [
+            'id',
+            'created_at',
+            'updated_at',
+            'comments_cnt',
+        ]
+
 
 class CommentSerializer(serializers.ModelSerializer):
     post = serializers.SerializerMethodField()
