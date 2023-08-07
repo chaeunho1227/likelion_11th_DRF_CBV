@@ -17,7 +17,7 @@ class Post(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     tag = models.ManyToManyField(Tag,blank=True)
     image = models.ImageField(upload_to=image_upload_path,blank=True, null= True)
-    likes = models.PositiveSmallIntegerField(default=0)
+    # likes = models.PositiveSmallIntegerField(default=0)
 
 class Comment(models.Model):
     id = models.AutoField(primary_key=True)
@@ -26,3 +26,9 @@ class Comment(models.Model):
     content = models.TextField(max_length=200)
     create_at = models.DateTimeField(auto_now_add=True)
     update_at = models.DateTimeField(auto_now=True)
+
+class PostReactions(models.Model):
+    REACTION_CHOICE = (("like","Like"),("dislike","Dislike"))
+    reaction = models.CharField(max_length=10, choices=REACTION_CHOICE)
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="reactions")
+    user = models.ForeignKey(User, on_delete=models.CASCADE)

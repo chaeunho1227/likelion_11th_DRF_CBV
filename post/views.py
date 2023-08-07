@@ -1,17 +1,28 @@
 from rest_framework import viewsets, mixins
+from rest_framework.filters import SearchFilter
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser,IsAuthenticated
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action
 from .permissions import IsOwnerOrReadOnly
 from django.shortcuts import get_object_or_404
-
+from django.db.models import Count, Q
 from .models import *
 from .serializers import *
 # Create your views here.
 
 class PostViewSet(viewsets.ModelViewSet):
-    queryset = Post.objects.all()
+    queryset = Post.objects.annotate(
+        like_cnt=Count(
+            "reactions", filter=Q(reactions__reaction='like'), distinct=True
+        ),
+        dislike_cnt=Count(
+            "reactions", filter=Q(reactions__reaction='dislike'), distinct=True
+        ),
+    )
+    filter_backends = [SearchFilter]
+    search_fields = ["title"]
+
     def get_serializer_class(self):
         if self.action == 'list':
             return PostListSerializer
@@ -20,6 +31,8 @@ class PostViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ['update','destroy','partial_update']:
             return [IsOwnerOrReadOnly()]
+        elif self.action in ['like','dislike']:
+            return [IsAuthenticated()]
         return[]
 
     def get_object(self):
@@ -55,17 +68,38 @@ class PostViewSet(viewsets.ModelViewSet):
         self.handle_tags(post)
 
     @action(methods=['GET'],detail=False)
-    def biggest_likes_3(self, request):
-        big_3_posts = Post.objects.all().order_by('-likes')[:3]
-        big_3_posts_serializer = PostListSerializer(big_3_posts,many=True)
-        return Response(big_3_posts_serializer.data)
-    
-    @action(methods=['GET'],detail=True)
-    def like(self, requset, pk=None):
-        like_post = self.get_object()
-        like_post.likes += 1
-        like_post.save(update_fields=['likes'])
-        return Response()
+    def biggest_likes_5(self, request):
+        big_5_posts = Post.objects.annotate(like_cnt=Count("reactions", filter=Q(reactions__reaction='like'), distinct=True)).order_by('-like_cnt')[:5]
+        big_5_posts_serializer = PostListSerializer(big_5_posts,many=True)
+        return Response(big_5_posts_serializer.data)
+
+    @action(methods=['GET'], detail=True)
+    def like(self, request, pk=None):
+        return self.like_or_dislike(request, pk, reaction="like")
+
+    @action(methods=['GET'], detail=True)
+    def dislike(self, request, pk=None):
+        return self.like_or_dislike(request, pk, reaction="dislike")
+
+    def like_or_dislike(self, request, pk=None, reaction=None):
+        post = self.get_object()
+        user = request.user
+        existing_reaction = PostReactions.objects.filter(post=post, user=user).first()
+
+        if reaction not in ("like", "dislike"):
+            return Response()
+
+        if existing_reaction:
+            if existing_reaction.reaction == reaction:
+                existing_reaction.delete()
+                return Response()
+            else:
+                existing_reaction.reaction = reaction
+                existing_reaction.save()
+                return Response()
+        else:
+            PostReactions.objects.create(post=post, user=user, reaction=reaction)
+            return Response()
 
 class CommentViewSet(viewsets.GenericViewSet,mixins.RetrieveModelMixin,mixins.UpdateModelMixin,mixins.DestroyModelMixin):
     queryset = Comment.objects.all()
